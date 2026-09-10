@@ -75,6 +75,8 @@ GitHub publishing failures do not retain the VM. Test evidence and any pushed fa
 
 ## Security boundary
 
+Codex runs with full guest access and no interactive approvals. The disposable Jio VM supplies isolation; Codex's nested Bubblewrap sandbox cannot pivot the current guest root filesystem. Run this guest helper only inside the dedicated task VM. The agent can modify the whole guest, and VM destruction is required after every task.
+
 GitHub and Jio credentials stay on the GitHub runner. Source is cloned anonymously inside the VM at the frozen commit. The selected provider key is sent through the SDK's pinned SSH transport on stdin, and supplied only to the agent invocation. Setup and final test invocations receive no provider key from the orchestrator. [Codex automation](https://learn.chatgpt.com/docs/non-interactive-mode) and [Claude programmatic usage](https://code.claude.com/docs/en/headless) describe their native noninteractive interfaces.
 
 The publishing job receives no Jio or model credentials. It applies the patch with Git hooks and external configuration disabled, then pushes without executing the target repository's scripts or dependencies. The patch digest must match the artifact recorded after tests.

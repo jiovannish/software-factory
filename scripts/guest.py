@@ -13,11 +13,11 @@ CONTROL = Path.home() / ".software-factory"
 
 def agent_command(agent, model):
     if agent == "codex":
+        # The disposable Jio VM is the sandbox; its rootfs cannot run nested bwrap.
         return [
             "codex", "exec", "--json", "--ephemeral", "--ignore-user-config",
-            "--ignore-rules", "--sandbox", "workspace-write", "--color", "never",
+            "--ignore-rules", "--sandbox", "danger-full-access", "--color", "never",
             "-c", 'approval_policy="never"',
-            "-c", "sandbox_workspace_write.network_access=true",
             "-c", 'shell_environment_policy.exclude=["CODEX_API_KEY"]',
             "--model", model, "-",
         ]

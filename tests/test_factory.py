@@ -389,6 +389,9 @@ class FactoryTest(unittest.TestCase):
             self.assertEqual(command[0], binary)
             self.assertIn("a-model", command)
             self.assertFalse(any("bypass" in part or "skip-permissions" in part for part in command))
+            if agent == "codex":
+                self.assertEqual(command[command.index("--sandbox") + 1], "danger-full-access")
+                self.assertIn('approval_policy="never"', command)
         # A pipeline's final successful command cannot hide an earlier failed check.
         with (
             patch.object(guest, "ROOT", self.root),
