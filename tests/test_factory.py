@@ -94,6 +94,7 @@ class FactoryTest(unittest.TestCase):
         self.output, self.state = self.root / "out", self.root / "state.json"
         self.env = {"GITHUB_REPOSITORY": "example/project", "GITHUB_EVENT_NAME": "issue_comment",
                     "GITHUB_RUN_ID": "42", "GITHUB_ACTOR": "maintainer"}
+        self.enterContext(patch.dict(os.environ, self.env))
         self.event = {"repository": {"full_name": "example/project"}, "action": "created",
                       "sender": {"type": "User"}, "issue": {"number": 7, "title": "Trim greeting",
                       "body": "Fix names", "state": "open"}, "comment": {"body": "/jio codex\nTrim names."}}
@@ -186,6 +187,11 @@ class FactoryTest(unittest.TestCase):
         self.event.update(action="labeled", label={"name": "jio:claude"})
         self.env["GITHUB_EVENT_NAME"] = "issues"
         self.assertEqual(factory.authorize(self.event, self.env, self.api)["agent"], "claude")
+
+    def test_artifacts_must_belong_to_this_repository_and_run(self):
+        for values in ({"GITHUB_REPOSITORY": "different/project"}, {"GITHUB_RUN_ID": "99"}):
+            with patch.dict(os.environ, values), self.assertRaises(ValueError):
+                factory.validate_task(task())
 
     def test_manual_run_selects_agent_and_issue(self):
         result = factory.request_from_event(self.event, "workflow_dispatch", {"agent": "claude", "issue": "7"})
