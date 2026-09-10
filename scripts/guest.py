@@ -64,7 +64,17 @@ def main():
                        cwd=ROOT, env=env, check=True)
     elif operation == "agent":
         env["CODEX_HOME"] = str(CONTROL / "codex")
-        env["CODEX_API_KEY" if data["agent"] == "codex" else "ANTHROPIC_API_KEY"] = data["key"]
+        if data["agent"] == "codex" and data["key"].lstrip().startswith("{"):
+            auth = json.loads(data["key"])
+            if auth.get("auth_mode") != "chatgpt" or not auth.get("tokens", {}).get("access_token"):
+                raise ValueError("CODEX_AUTH_JSON must contain a Codex ChatGPT login")
+            home = Path(env["CODEX_HOME"])
+            home.mkdir(mode=0o700, parents=True, exist_ok=True)
+            auth_file = home / "auth.json"
+            auth_file.write_text(json.dumps(auth))
+            auth_file.chmod(0o600)
+        else:
+            env["CODEX_API_KEY" if data["agent"] == "codex" else "ANTHROPIC_API_KEY"] = data["key"]
         result = subprocess.run(agent_command(data["agent"], data["model"]),
                                 input=data["prompt"].encode(), cwd=ROOT, env=env, check=False)
         raise SystemExit(result.returncode)

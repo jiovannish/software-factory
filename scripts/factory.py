@@ -22,6 +22,7 @@ MAX_JSON = 2 * 1024 * 1024
 GUEST = "/home/jio/.software-factory/guest.py"
 SOURCE = Path(__file__).resolve().parent
 AGENTS = {"codex": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}
+ALLOWED_USER = "saugardev"
 
 
 class Skip(Exception):
@@ -135,6 +136,9 @@ def existing_pr(task, api=github):
 
 
 def authorize(event, env, api=github):
+    if any(env.get(key, env.get("GITHUB_ACTOR")) != ALLOWED_USER
+           for key in ("GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR")):
+        raise Skip("Only saugardev can launch factory tasks")
     agent, issue_number, comment = request_from_event(event, env["GITHUB_EVENT_NAME"],
         {"agent": env.get("REQUEST_AGENT"), "issue": env.get("REQUEST_ISSUE")})
     repo = require(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", env["GITHUB_REPOSITORY"], "repository")
@@ -192,6 +196,16 @@ def scrub(text, secrets):
     return text.replace("\r", "").replace("::", ": :")
 
 
+def credential_secrets(agent, credential):
+    values = [credential]
+    if agent == "codex" and credential.lstrip().startswith("{"):
+        auth = json.loads(credential)
+        if auth.get("auth_mode") != "chatgpt" or not isinstance(auth.get("tokens"), dict):
+            raise ValueError("CODEX_AUTH_JSON must contain a Codex ChatGPT login")
+        values.extend(value for value in auth["tokens"].values() if isinstance(value, str) and value)
+    return values
+
+
 def agent_result(agent, output):
     if agent == "claude":
         result = json.loads(output)
@@ -243,6 +257,7 @@ def work(task, client, output, state_file, provider_key, jio_key, preflight=pref
     try:
         if not provider_key or not jio_key:
             raise ValueError("Add JIO_API_KEY and the selected provider API key before running")
+        secrets = credential_secrets(task["agent"], provider_key) + [jio_key]
         preflight(client, jio_key)
         write_json(state_file, {"create_attempted": True})
         outcome["stage"] = "create"

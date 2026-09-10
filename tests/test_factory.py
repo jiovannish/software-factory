@@ -93,11 +93,11 @@ class FactoryTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.output, self.state = self.root / "out", self.root / "state.json"
         self.env = {"GITHUB_REPOSITORY": "example/project", "GITHUB_EVENT_NAME": "issue_comment",
-                    "GITHUB_RUN_ID": "42", "GITHUB_ACTOR": "maintainer"}
+                    "GITHUB_RUN_ID": "42", "GITHUB_ACTOR": "saugardev", "GITHUB_TRIGGERING_ACTOR": "saugardev"}
         self.enterContext(patch.dict(os.environ, self.env))
         self.event = {"repository": {"full_name": "example/project"}, "action": "created",
                       "sender": {"type": "User"}, "issue": {"number": 7, "title": "Trim greeting",
-                      "body": "Fix names", "state": "open"}, "comment": {"body": "/jio codex\nTrim names."}}
+                      "body": "Fix names", "state": "open", "user": {"login": "saugardev"}}, "comment": {"body": "/jio codex\nTrim names."}}
 
     def api(self, path):
         if path.endswith("/permission"):
@@ -192,6 +192,43 @@ class FactoryTest(unittest.TestCase):
         for values in ({"GITHUB_REPOSITORY": "different/project"}, {"GITHUB_RUN_ID": "99"}):
             with patch.dict(os.environ, values), self.assertRaises(ValueError):
                 factory.validate_task(task())
+
+    def test_any_author_needs_saugardev_approval_before_launch(self):
+        with self.assertRaises(factory.Skip):
+            factory.request_from_event(self.event | {"action": "opened"}, "issues", {})
+        for field in ("GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR"):
+            env = self.env | {field: "another-admin"}
+            with self.assertRaises(factory.Skip):
+                factory.authorize(self.event, env, self.api)
+        for name, action in (("issue_comment", "created"), ("issues", "labeled"), ("workflow_dispatch", "created")):
+            event = self.event | {"action": action, "label": {"name": "jio:codex"},
+                                  "issue": self.event["issue"] | {"user": {"login": "someone-else"}}}
+            env = self.env | {"GITHUB_EVENT_NAME": name, "GITHUB_REF": "refs/heads/main",
+                              "REQUEST_AGENT": "codex", "REQUEST_ISSUE": "7"}
+            self.assertEqual(factory.authorize(event, env, self.api)["agent"], "codex")
+
+    def test_personal_codex_login_is_private_and_redacted(self):
+        auth = {"auth_mode": "chatgpt", "tokens": {"access_token": "test-access-token",
+                "refresh_token": "test-refresh-token", "id_token": "test-id-token"}}
+        credential = json.dumps(auth)
+        values = factory.credential_secrets("codex", credential)
+        for secret in auth["tokens"].values():
+            self.assertEqual(factory.scrub(secret, values), "[REDACTED]")
+        payload = {"agent": "codex", "model": "test-model", "key": credential, "prompt": "Do the task"}
+        with (
+            patch.object(guest, "CONTROL", self.root),
+            patch.object(sys, "argv", ["guest.py", "agent"]),
+            patch.object(sys, "stdin", io.StringIO(json.dumps(payload))),
+            patch.object(guest.subprocess, "run") as run,
+        ):
+            run.return_value.returncode = 0
+            with self.assertRaises(SystemExit):
+                guest.main()
+            self.assertNotIn("CODEX_API_KEY", run.call_args.kwargs["env"])
+            self.assertNotIn("test-access-token", str(run.call_args))
+        file = self.root / "codex" / "auth.json"
+        self.assertEqual(json.loads(file.read_text()), auth)
+        self.assertEqual(file.stat().st_mode & 0o777, 0o600)
 
     def test_manual_run_selects_agent_and_issue(self):
         result = factory.request_from_event(self.event, "workflow_dispatch", {"agent": "claude", "issue": "7"})

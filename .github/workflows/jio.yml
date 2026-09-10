@@ -26,10 +26,9 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-    # Replace BOTH occurrences with the same reviewed 40-character factory commit.
-    uses: jiovannish/software-factory/.github/workflows/factory.yml@REPLACE_WITH_FACTORY_COMMIT
+    uses: ./.github/workflows/factory.yml
     with:
-      factory_ref: REPLACE_WITH_FACTORY_COMMIT
+      factory_ref: ${{ github.sha }}
       agent: ${{ inputs.agent || '' }}
       issue: ${{ inputs.issue || '' }}
     secrets:

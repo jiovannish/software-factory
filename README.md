@@ -6,7 +6,7 @@ Give a GitHub issue to Codex or Claude. It works inside a fresh Jio VM and retur
 
 ## Getting started
 
-[Configure your repository](docs/README.md#setup), then comment on an issue:
+[Configure your repository](docs/README.md#setup). Anyone can open a ticket; `saugardev` approves it and chooses the agent by commenting:
 
 ```text
 /jio codex

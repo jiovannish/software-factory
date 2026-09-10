@@ -24,6 +24,8 @@ on:
         required: false
       OPENAI_API_KEY:
         required: false
+      CODEX_AUTH_JSON:
+        required: false
       ANTHROPIC_API_KEY:
         required: false
 
@@ -35,6 +37,7 @@ concurrency:
 
 jobs:
   authorize:
+    if: github.actor == 'saugardev' && github.triggering_actor == 'saugardev'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -72,7 +75,7 @@ jobs:
 
   work:
     needs: authorize
-    if: needs.authorize.outputs.eligible == 'true'
+    if: needs.authorize.outputs.eligible == 'true' && github.actor == 'saugardev' && github.triggering_actor == 'saugardev'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -91,7 +94,7 @@ jobs:
       - name: Check required secrets
         env:
           JIO_API_KEY: ${{ secrets.JIO_API_KEY }}
-          PROVIDER_API_KEY: ${{ secrets[needs.authorize.outputs.agent == 'codex' && 'OPENAI_API_KEY' || 'ANTHROPIC_API_KEY'] }}
+          PROVIDER_API_KEY: ${{ secrets[needs.authorize.outputs.agent == 'codex' && 'OPENAI_API_KEY' || 'ANTHROPIC_API_KEY'] || (needs.authorize.outputs.agent == 'codex' && secrets.CODEX_AUTH_JSON || '') }}
         run: |
           python3 - <<'PY'
           import os
@@ -103,7 +106,7 @@ jobs:
       - name: Run the task in Jio
         env:
           JIO_API_KEY: ${{ secrets.JIO_API_KEY }}
-          PROVIDER_API_KEY: ${{ secrets[needs.authorize.outputs.agent == 'codex' && 'OPENAI_API_KEY' || 'ANTHROPIC_API_KEY'] }}
+          PROVIDER_API_KEY: ${{ secrets[needs.authorize.outputs.agent == 'codex' && 'OPENAI_API_KEY' || 'ANTHROPIC_API_KEY'] || (needs.authorize.outputs.agent == 'codex' && secrets.CODEX_AUTH_JSON || '') }}
         run: '"$FACTORY_PYTHON" factory/scripts/factory.py work'
       - name: Retry VM cleanup
         if: always()
@@ -130,7 +133,7 @@ jobs:
 
   publish:
     needs: [authorize, work]
-    if: always() && needs.authorize.outputs.eligible == 'true'
+    if: always() && needs.authorize.outputs.eligible == 'true' && github.actor == 'saugardev' && github.triggering_actor == 'saugardev'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

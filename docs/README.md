@@ -29,18 +29,20 @@ The guest template must provide Python 3.12, Node.js 24/npm, Git, Bash, OpenSSH,
 
 The selected agent is installed into the guest's home directory at a pinned version: Codex **0.154.0**, Claude Code **2.1.81**. Dependencies and agent credentials are not baked into a reusable template. Baking the public tooling can be a later optimization.
 
+For an explicitly approved personal Codex test, `CODEX_AUTH_JSON` can temporarily hold a copy of your Codex `auth.json` instead of `OPENAI_API_KEY`. An API key takes precedence when both exist. This login can include refresh tokens: treat the whole file as a credential, remove the temporary GitHub secret after testing, and do not publish it in logs or artifacts. The guest writes it outside the checkout with mode `0600`; VM destruction removes the copy. Refreshed login state is not synchronized back to your machine or GitHub. Dedicated provider API keys remain the supported default for ongoing automation.
+
 ## Assign a task
 
-A repository member with **write, maintain, or admin** permission can comment:
+Anyone can open an issue. Opening it does not allocate a VM or run an agent: the ticket waits for **saugardev** to approve it. Approve and select the agent by commenting:
 
 ```text
 /jio codex
 Also cover names containing only whitespace.
 ```
 
-Use `/jio claude` to choose Claude. The command must occupy the first line; following lines add task context to the issue title and body. Public commenters without write access cannot start agents.
+Use `/jio claude` to choose Claude. The command must occupy the first line; following lines add task context to the issue title and body. Only a command from saugardev starts the task, including on somebody else's issue. Other users cannot start agents, including other repository administrators. Repository write permission is still required for saugardev.
 
-Alternatively, create and apply `jio:codex` or `jio:claude` labels, or select **Actions → Jio task → Run workflow** and supply an open issue number and agent. Manual runs must use the trusted default branch. Bot requests, edited comments, and comments on pull requests are ignored. Re-running a workflow also checks the current triggering user's permission.
+Alternatively, create and apply `jio:codex` or `jio:claude` labels, or select **Actions → Jio task → Run workflow** and supply an open issue number and agent. Manual runs must use the trusted default branch. The same saugardev-only restriction applies to labels, manual runs and reruns, including reruns of failed jobs. Bot requests, edited comments, and comments on pull requests are ignored.
 
 The factory freezes the base commit, issue context, and configuration before starting. It respects repository instructions and lets the selected agent edit files and run tools in the VM. After the agent finishes, the workflow runs your configured test command again.
 
@@ -110,4 +112,4 @@ Use a disposable public repository and dedicated factory account. Live acceptanc
 
 Public GitHub repositories and GitHub-hosted Ubuntu runners only. No private-repository authentication, persistent workspace, public app preview, automatic merge, multi-agent team, custom dashboard, durable task queue, or VM/host restart recovery. A new task starts from scratch. The factory does not enforce a cross-provider dollar budget; configure provider account spending controls and inspect usage there.
 
-The initial repository has no Jio or provider secrets and does not activate a live factory on another repository. Installation and live acceptance require the setup above. Jio remains experimental.
+This repository includes its own caller and test configuration. Creating a ticket still waits for saugardev approval, and live execution requires Jio and provider credentials. Installing the factory on another repository requires the setup above. Jio remains experimental.

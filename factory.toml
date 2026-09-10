@@ -1,0 +1,5 @@
+setup = "python3 --version && node --version && git --version"
+test = "python3 -m unittest discover -s tests -v"
+
+[models]
+codex = "gpt-6-astra"
