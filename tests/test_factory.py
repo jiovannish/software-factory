@@ -61,9 +61,13 @@ class FakeJio:
 
     def write_file(self, path, contents, timeout):
         assert contents and path == factory.GUEST
+        if self.failure == "upload":
+            raise RuntimeError("Guest upload failed")
 
     def exec(self, command, *, input=None, timeout):
         if input is None:
+            if self.failure == "bootstrap":
+                return Result(b"bootstrap failed\n", 1)
             return Result()
         operation, data = command.split()[-1], json.loads(input)
         self.operations.append((operation, data, timeout))
@@ -138,6 +142,30 @@ class FactoryTest(unittest.TestCase):
                 result = self.run_work(client)
                 self.assertFalse(result["passed"])
                 self.assertEqual(client.destroyed, [client.id])
+
+    def test_guest_bootstrap_failures_destroy_the_vm_and_block_publication(self):
+        for failure, error in (("bootstrap", "Guest failed"), ("upload", "Guest upload failed")):
+            with self.subTest(failure=failure):
+                client = FakeJio(failure)
+                with patch.object(client, "write_file", wraps=client.write_file) as upload:
+                    result = self.run_work(client)
+                self.assertEqual(upload.call_count, 0 if failure == "bootstrap" else 1)
+                self.assertEqual(client.created, 1)
+                self.assertEqual(client.operations, [])
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["error"], error)
+                self.assertEqual(result["vm"], client.id)
+                self.assertEqual(result["cleanup"], "destroyed")
+                state = factory.read_json(self.state)
+                self.assertEqual(state["vm"], client.id)
+                self.assertTrue(state["destroyed"])
+                self.assertEqual(client.destroyed, [state["vm"]])
+                self.assertEqual(factory.read_json(self.output / "outcome.json"), result)
+                with patch.object(factory, "github") as api, patch.object(factory, "git") as git:
+                    with self.assertRaisesRegex(ValueError, "Tests and VM cleanup must pass before publishing"):
+                        factory.publish(task(), self.output, api)
+                    api.assert_not_called()
+                    git.assert_not_called()
 
     def test_uncertain_create_does_not_retry_or_delete_other_vms(self):
         client = FakeJio("create")
