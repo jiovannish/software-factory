@@ -1,0 +1,33 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test orchestration and guest commands
+        run: python3 -m unittest discover -s tests -v
+      - name: Check workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml examples/jio.yml
+      - uses: ./.github/actions/setup-jio
+      - name: Verify the Linux SDK
+        run: |
+          "$FACTORY_PYTHON" - <<'PY'
+          from jio import Jio, Vm
+          assert all(hasattr(Vm, name) for name in ('exec', 'write_file', 'destroy'))
+          print('Pinned SDK imports successfully on Linux / Python 3.12.')
+          PY

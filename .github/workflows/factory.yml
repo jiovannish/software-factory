@@ -1,0 +1,156 @@
+name: Work on an issue in Jio
+
+on:
+  workflow_call:
+    inputs:
+      factory_ref:
+        description: 'Full commit SHA of the factory code; match the caller uses ref'
+        required: true
+        type: string
+      factory_repository:
+        description: 'Repository containing the factory implementation'
+        default: jiovannish/software-factory
+        type: string
+      agent:
+        description: 'Manual runs: codex or claude'
+        default: ''
+        type: string
+      issue:
+        description: 'Manual runs: issue number in the calling repository'
+        default: ''
+        type: string
+    secrets:
+      JIO_API_KEY:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: jio-factory-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      eligible: ${{ steps.task.outputs.eligible }}
+      agent: ${{ steps.task.outputs.agent }}
+    steps:
+      - name: Require an immutable factory source
+        env:
+          FACTORY_REF: ${{ inputs.factory_ref }}
+        run: python3 -c 'import os,re; assert re.fullmatch("[a-f0-9]{40}", os.environ["FACTORY_REF"]), "Set factory_ref to a full commit SHA"'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.factory_repository }}
+          ref: ${{ inputs.factory_ref }}
+          path: factory
+          persist-credentials: false
+      - name: Authorize and freeze the task
+        id: task
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_AGENT: ${{ inputs.agent }}
+          REQUEST_ISSUE: ${{ inputs.issue }}
+        run: python3 factory/scripts/factory.py authorize
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.task.outputs.eligible == 'true'
+        with:
+          name: factory-task-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/task.json
+          if-no-files-found: error
+          retention-days: 7
+
+  work:
+    needs: authorize
+    if: needs.authorize.outputs.eligible == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.factory_repository }}
+          ref: ${{ inputs.factory_ref }}
+          path: factory
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: factory-task-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out
+      - name: Check required secrets
+        env:
+          JIO_API_KEY: ${{ secrets.JIO_API_KEY }}
+          PROVIDER_API_KEY: ${{ secrets[needs.authorize.outputs.agent == 'codex' && 'OPENAI_API_KEY' || 'ANTHROPIC_API_KEY'] }}
+        run: |
+          python3 - <<'PY'
+          import os
+          for key in ('JIO_API_KEY', 'PROVIDER_API_KEY'):
+              if not os.environ.get(key):
+                  raise SystemExit(f'Configure {key}: the selected agent needs its own provider API key.')
+          PY
+      - uses: ./factory/.github/actions/setup-jio
+      - name: Run the task in Jio
+        env:
+          JIO_API_KEY: ${{ secrets.JIO_API_KEY }}
+          PROVIDER_API_KEY: ${{ secrets[needs.authorize.outputs.agent == 'codex' && 'OPENAI_API_KEY' || 'ANTHROPIC_API_KEY'] }}
+        run: '"$FACTORY_PYTHON" factory/scripts/factory.py work'
+      - name: Retry VM cleanup
+        if: always()
+        env:
+          JIO_API_KEY: ${{ secrets.JIO_API_KEY }}
+        run: |
+          if [ -f "$RUNNER_TEMP/factory-vm.json" ]; then
+            "$FACTORY_PYTHON" factory/scripts/factory.py cleanup
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: factory-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            out/task.json
+            out/outcome.json
+            out/tests.txt
+            out/change.patch
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove runner credentials
+        if: always()
+        run: rm -rf -- "$JIO_STATE_DIR"
+
+  publish:
+    needs: [authorize, work]
+    if: always() && needs.authorize.outputs.eligible == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.factory_repository }}
+          ref: ${{ inputs.factory_ref }}
+          path: factory
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: factory-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out
+          merge-multiple: true
+      - name: Publish draft PR or report failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORK_RESULT: ${{ needs.work.result }}
+        run: python3 factory/scripts/factory.py publish

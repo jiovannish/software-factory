@@ -1,0 +1,37 @@
+name: Jio task
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Issue number'
+        required: true
+        type: string
+      agent:
+        description: 'Coding agent'
+        required: true
+        type: choice
+        options: [codex, claude]
+
+permissions: {}
+
+jobs:
+  task:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    # Replace BOTH occurrences with the same reviewed 40-character factory commit.
+    uses: jiovannish/software-factory/.github/workflows/factory.yml@REPLACE_WITH_FACTORY_COMMIT
+    with:
+      factory_ref: REPLACE_WITH_FACTORY_COMMIT
+      agent: ${{ inputs.agent || '' }}
+      issue: ${{ inputs.issue || '' }}
+    secrets:
+      JIO_API_KEY: ${{ secrets.JIO_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

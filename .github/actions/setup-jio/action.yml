@@ -1,0 +1,35 @@
+name: Set up Jio Python SDK
+description: Build and cache the pinned Jio SDK for the Ubuntu 24.04 runner
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: jiovannish/client
+        ref: 8b243ef86aa45d889c3aec5dd225504c18081edd # CLI v0.2.0 / Python SDK source
+        path: jio-client
+        persist-credentials: false
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: sdk-cache
+      with:
+        path: ${{ runner.temp }}/jio-wheels
+        key: jio-sdk-${{ runner.os }}-${{ runner.arch }}-py312-8b243ef86aa45d889c3aec5dd225504c18081edd
+    - name: Prepare Python
+      shell: bash
+      run: python3 -m venv "$RUNNER_TEMP/factory-python"
+    - name: Build the pinned Jio Python SDK
+      if: steps.sdk-cache.outputs.cache-hit != 'true'
+      working-directory: jio-client
+      shell: bash
+      run: |
+        "$RUNNER_TEMP/factory-python/bin/pip" install --disable-pip-version-check maturin==1.15.0
+        rustup show active-toolchain
+        "$RUNNER_TEMP/factory-python/bin/maturin" build --locked --release --interpreter "$RUNNER_TEMP/factory-python/bin/python" --manifest-path bindings/python/Cargo.toml --out "$RUNNER_TEMP/jio-wheels"
+    - name: Install SDK and configure private state
+      shell: bash
+      run: |
+        "$RUNNER_TEMP/factory-python/bin/pip" install --disable-pip-version-check --no-index "$RUNNER_TEMP"/jio-wheels/*.whl
+        install -d -m 700 "$RUNNER_TEMP/factory-jio"
+        echo "FACTORY_PYTHON=$RUNNER_TEMP/factory-python/bin/python" >> "$GITHUB_ENV"
+        echo "JIO_STATE_DIR=$RUNNER_TEMP/factory-jio" >> "$GITHUB_ENV"
+        echo "JIO_CA_CERT=$GITHUB_WORKSPACE/jio-client/crates/jio-client/src/jio-ca.pem" >> "$GITHUB_ENV"

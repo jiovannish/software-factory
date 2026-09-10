@@ -1,0 +1,8 @@
+# Commands run inside the target repository in Jio, using bash -e -o pipefail.
+# Replace these Python examples with your project's setup and checks.
+setup = "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+test = ".venv/bin/python -m pytest -q"
+
+[models]
+codex = "REPLACE_WITH_OPENAI_MODEL_ID"
+claude = "REPLACE_WITH_ANTHROPIC_MODEL_ID"
